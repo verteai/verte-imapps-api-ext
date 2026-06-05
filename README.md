@@ -45,7 +45,7 @@ cp config.example.py config.py
 
 ### 2. Configure
 
-Edit `config.py` and set your `p_access_key`. Do not commit `config.py` — it is listed in `.gitignore`.
+Edit `config.py` and set your `p_access_key` if needed (a default `config.py` is included in the repository).
 
 The `cache/` directory is created automatically when responses are cached.
 
@@ -105,7 +105,8 @@ verte-imapps-api-ext/
 ├── response_filter.py  # Tab-specific LIKE filters
 ├── table_renderer.py   # HTML / text table output
 ├── config_loader.py    # Loads config.py
-├── config.example.py   # Sample configuration (copy to config.py)
+├── config.example.py   # Sample configuration template
+├── config.py           # Active configuration (included in repo)
 ├── requirements.txt
 └── cache/              # Cached API responses (gitignored)
 ```
