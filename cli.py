@@ -4,6 +4,7 @@ Command-line usage:
   python cli.py ProdPlan
   python cli.py MfgOrders --IONo=7807630
   python cli.py MfgOrders --MONo=7807630001 --IONo=7807630
+  python cli.py OperBull --MONo=7808117004
   python cli.py MfgOrders --refresh
   python cli.py MfgOrders --out=orders.json
 """
@@ -58,6 +59,11 @@ def main() -> int:
 
     filters = ResponseFilter.from_request({"IONo": args.io_no, "MONo": args.mo_no})
     has_filters = ResponseFilter.has_filters_for_command(cmd, filters["IONo"], filters["MONo"])
+    api_params = ResponseFilter.api_params_for_command(cmd, filters["IONo"], filters["MONo"])
+
+    if cmd == "OperBull" and not filters["MONo"]:
+        print("Error: OperBull requires --MONo", file=sys.stderr)
+        return 1
 
     client = VerteApiClient(config)
     start = time.perf_counter()
@@ -66,7 +72,7 @@ def main() -> int:
         not args.refresh
         and not has_filters
         and args.out_file
-        and (cache_file := client.get_cached_file_path(cmd)) is not None
+        and (cache_file := client.get_cached_file_path(cmd, api_params)) is not None
     )
 
     if use_cache_copy:
@@ -77,7 +83,7 @@ def main() -> int:
             print(f"Error: could not write to {args.out_file}: {exc}", file=sys.stderr)
             return 1
 
-        summary = client.get_cached_summary(cmd)
+        summary = client.get_cached_summary(cmd, api_params)
         secs = round(time.perf_counter() - start, 2)
         print(f"HTTP 200 in {secs}s (cached)")
         if summary and summary.get("record_count") is not None:
@@ -86,20 +92,20 @@ def main() -> int:
         return 0
 
     if not args.refresh and not has_filters and not args.out_file:
-        result = client.get_cached_summary(cmd)
+        result = client.get_cached_summary(cmd, api_params)
         if result is None:
-            result = client.call(cmd, {}, args.refresh)
+            result = client.call(cmd, api_params, args.refresh)
     else:
-        result = client.call(cmd, {}, args.refresh)
+        result = client.call(cmd, api_params, args.refresh)
 
-    if has_filters:
+    if has_filters and ResponseFilter.uses_client_filter(cmd):
         result = ResponseFilter.apply_to_result(result, cmd, filters["IONo"], filters["MONo"])
 
     secs = round(time.perf_counter() - start, 2)
     status_suffix = ""
     if result.get("from_cache") and not has_filters:
         status_suffix = " (cached)"
-    elif has_filters:
+    elif has_filters and ResponseFilter.uses_client_filter(cmd):
         status_suffix = " (filtered)"
 
     print(f"HTTP {result['http_code']} in {secs}s{status_suffix}")

@@ -1,12 +1,12 @@
 # verte-imapps-api-ext
 
-Python client and browser UI for the Luenthai **IMAPPS / Verte API** — **MfgOrders** and **ProdPlan** with response caching, tabbed filtering, and scrollable table preview.
+Python client and browser UI for the Luenthai **IMAPPS / Verte API** — **MfgOrders**, **ProdPlan**, and **OperBull** with response caching, tabbed filtering, and scrollable table preview.
 
 Repository: [github.com/verteai/verte-imapps-api-ext](https://github.com/verteai/verte-imapps-api-ext)
 
 ## Features
 
-- **Web UI** (Flask) — tabbed MfgOrders / ProdPlan browser with filters and JSON download
+- **Web UI** (Flask) — tabbed MfgOrders / ProdPlan / OperBull browser with filters and JSON download
 - **CLI** — fetch, filter, and export responses from the terminal
 - **Caching** — disk cache with per-command TTLs and optional scheduled warm-up
 - **Filters** — partial-match search on IONo / MONo (command-specific)
@@ -62,6 +62,7 @@ Open [http://127.0.0.1:5000/](http://127.0.0.1:5000/)
 | Web UI (default tab: ProdPlan) | http://127.0.0.1:5000/ |
 | MfgOrders tab | http://127.0.0.1:5000/?cmd=MfgOrders |
 | ProdPlan tab | http://127.0.0.1:5000/?cmd=ProdPlan&fetch=1 |
+| OperBull tab | http://127.0.0.1:5000/?cmd=OperBull |
 
 #### Web UI behavior
 
@@ -69,6 +70,7 @@ Open [http://127.0.0.1:5000/](http://127.0.0.1:5000/)
 - Results render in a scrollable **table**; raw JSON download remains available.
 - **MfgOrders** — filter by **IONo** and/or **MONo** (partial match, contains).
 - **ProdPlan** — filter by **MONo** only (partial match).
+- **OperBull** — operations bulletin for a single **MONo** (sent to the API as `pMONo`).
 - **MfgOrders** is large (~37k records). Use filters for a quick preview, or **Load from cache** when a cached copy exists.
 
 ## Command line
@@ -77,6 +79,7 @@ Open [http://127.0.0.1:5000/](http://127.0.0.1:5000/)
 python cli.py ProdPlan
 python cli.py MfgOrders --IONo=702066
 python cli.py MfgOrders --MONo=7020666001
+python cli.py OperBull --MONo=7808117004
 python cli.py MfgOrders --refresh
 python cli.py MfgOrders --out=orders.json
 ```

@@ -110,13 +110,27 @@ HTML_TEMPLATE = """<!DOCTYPE html>
                     <a class="btn btn-secondary" href="?cmd=ProdPlan&amp;clear=1">Clear</a>
                 {% endif %}
             </form>
+        {% elif cmd == 'OperBull' %}
+            <p class="filter-hint">Operations bulletin for a manufacturing order (exact MONo).</p>
+            <form class="filter-form" method="get" action="">
+                <input type="hidden" name="cmd" value="OperBull">
+                <input type="hidden" name="fetch" value="1">
+                <label>
+                    MONo
+                    <input type="text" name="MONo" value="{{ filters.MONo or '' }}" placeholder="e.g. 7808117004" required>
+                </label>
+                <button type="submit" class="btn">Search</button>
+                {% if has_filters %}
+                    <a class="btn btn-secondary" href="?cmd=OperBull&amp;clear=1">Clear</a>
+                {% endif %}
+            </form>
         {% endif %}
     </div>
 
     {% if has_filters %}
-        <p class="meta">Filtering client-side (partial match)
+        <p class="meta">{% if cmd == 'OperBull' %}API query{% else %}Filtering client-side (partial match){% endif %}
             {% if cmd == 'MfgOrders' and filters.IONo %} · IONo contains <code>{{ filters.IONo }}</code>{% endif %}
-            {% if filters.MONo %} · MONo contains <code>{{ filters.MONo }}</code>{% endif %}
+            {% if filters.MONo %} · MONo {% if cmd == 'OperBull' %}<code>{{ filters.MONo }}</code>{% else %}contains <code>{{ filters.MONo }}</code>{% endif %}{% endif %}
         </p>
     {% endif %}
 
@@ -203,15 +217,20 @@ def _build_tab_href(command: str) -> str:
     saved = tab_view.get(command)
 
     if saved is not None:
-        params["fetch"] = "1"
         if command == "MfgOrders":
+            params["fetch"] = "1"
             if saved.get("IONo"):
                 params["IONo"] = saved["IONo"]
             if saved.get("MONo"):
                 params["MONo"] = saved["MONo"]
-        elif command == "ProdPlan" and saved.get("MONo"):
+        elif command == "ProdPlan":
+            params["fetch"] = "1"
+            if saved.get("MONo"):
+                params["MONo"] = saved["MONo"]
+        elif command == "OperBull" and saved.get("MONo"):
+            params["fetch"] = "1"
             params["MONo"] = saved["MONo"]
-    elif command != "MfgOrders":
+    elif command not in ("MfgOrders", "OperBull"):
         params["fetch"] = "1"
 
     return "?" + urlencode(params)
@@ -225,6 +244,8 @@ def _filter_query(filters: dict, cmd: str) -> str:
         if filters.get("MONo"):
             params["MONo"] = filters["MONo"]
     elif cmd == "ProdPlan" and filters.get("MONo"):
+        params["MONo"] = filters["MONo"]
+    elif cmd == "OperBull" and filters.get("MONo"):
         params["MONo"] = filters["MONo"]
 
     if not params:
@@ -251,21 +272,27 @@ def index() -> Response | str:
         tab_view.pop(cmd, None)
         session["tab_view"] = tab_view
         redirect_params: dict[str, str] = {"cmd": cmd}
-        if cmd != "MfgOrders":
+        if cmd not in ("MfgOrders", "OperBull"):
             redirect_params["fetch"] = "1"
         return redirect("?" + urlencode(redirect_params))
 
     filters = ResponseFilter.from_request(dict(request.args))
     has_filters = ResponseFilter.has_filters_for_command(cmd, filters["IONo"], filters["MONo"])
+    api_params = ResponseFilter.api_params_for_command(cmd, filters["IONo"], filters["MONo"])
 
     force_refresh = "refresh" in request.args
-    should_fetch = (
-        "fetch" in request.args
-        or force_refresh
-        or has_filters
-        or not fetch_on_demand
-        or cmd != "MfgOrders"
-    )
+    if cmd == "OperBull":
+        should_fetch = has_filters and (
+            "fetch" in request.args or force_refresh or not fetch_on_demand
+        )
+    else:
+        should_fetch = (
+            "fetch" in request.args
+            or force_refresh
+            or has_filters
+            or not fetch_on_demand
+            or cmd != "MfgOrders"
+        )
 
     client = VerteApiClient(CONFIG)
     result = None
@@ -273,13 +300,13 @@ def index() -> Response | str:
     cache_age_min = 0
 
     if should_fetch:
-        if has_filters or force_refresh:
-            result = client.call(cmd, {}, force_refresh)
+        if has_filters or force_refresh or cmd == "OperBull":
+            result = client.call(cmd, api_params, force_refresh)
         elif cmd == "MfgOrders":
-            result = client.get_cached_summary(cmd)
+            result = client.get_cached_summary(cmd, api_params)
         if result is None:
-            result = client.call(cmd, {}, force_refresh)
-        if has_filters:
+            result = client.call(cmd, api_params, force_refresh)
+        if has_filters and ResponseFilter.uses_client_filter(cmd):
             result = ResponseFilter.apply_to_result(result, cmd, filters["IONo"], filters["MONo"])
 
         if result is not None:
@@ -287,14 +314,14 @@ def index() -> Response | str:
             tab_view[cmd] = {"IONo": filters["IONo"], "MONo": filters["MONo"]}
             session["tab_view"] = tab_view
     else:
-        cache_valid = client.is_cache_valid(cmd)
-        cache_age = client.get_cache_age(cmd)
+        cache_valid = client.is_cache_valid(cmd, api_params)
+        cache_age = client.get_cache_age(cmd, api_params)
         cache_age_min = int((cache_age or 0) // 60)
 
     if "download" in request.args and should_fetch and result is not None:
         raw_payload = result.get("raw") or ""
         if not raw_payload and not has_filters:
-            cache_file = client.get_cached_file_path(cmd)
+            cache_file = client.get_cached_file_path(cmd, api_params)
             if cache_file is not None:
                 raw_payload = cache_file.read_text(encoding="utf-8")
 

@@ -134,6 +134,11 @@ class VerteApiClient:
     ) -> dict[str, Any]:
         return self.call("ProdPlan", params, force_refresh)
 
+    def get_oper_bull(
+        self, mo_no: str, force_refresh: bool = False
+    ) -> dict[str, Any]:
+        return self.call("OperBull", {"pMONo": mo_no}, force_refresh)
+
     def _ttl_for_cmd(self, cmd: str) -> int:
         return int(self.cache_ttl_by_cmd.get(cmd, self.cache_ttl))
 

@@ -22,9 +22,19 @@ class ResponseFilter:
 
     @staticmethod
     def has_filters_for_command(cmd: str, io_no: str | None, mo_no: str | None) -> bool:
-        if cmd == "ProdPlan":
+        if cmd in ("ProdPlan", "OperBull"):
             return bool((mo_no or "").strip())
         return ResponseFilter.has_filters(io_no, mo_no)
+
+    @staticmethod
+    def uses_client_filter(cmd: str) -> bool:
+        return cmd in ("MfgOrders", "ProdPlan")
+
+    @staticmethod
+    def api_params_for_command(cmd: str, io_no: str | None, mo_no: str | None) -> dict[str, Any]:
+        if cmd == "OperBull" and mo_no:
+            return {"pMONo": mo_no}
+        return {}
 
     @staticmethod
     def apply_to_result(

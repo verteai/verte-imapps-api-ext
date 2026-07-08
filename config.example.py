@@ -8,6 +8,7 @@ CONFIG = {
     "commands": {
         "MfgOrders": "Manufacturing Orders",
         "ProdPlan": "Production Planning",
+        "OperBull": "Operations Bulletin",
     },
     "default_command": "ProdPlan",
     "fetch_on_demand": True,
@@ -21,6 +22,7 @@ CONFIG = {
     "cache_ttl_by_cmd": {
         "MfgOrders": 14_400,
         "ProdPlan": 900,
+        "OperBull": 900,
     },
     "warm_cache_commands": ["MfgOrders"],
 }
