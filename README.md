@@ -4,6 +4,8 @@ Python client and browser UI for the Luenthai **IMAPPS / Verte API** — **MfgOr
 
 Repository: [github.com/verteai/verte-imapps-api-ext](https://github.com/verteai/verte-imapps-api-ext)
 
+See [API_USAGE.md](API_USAGE.md) for direct API request examples (Postman, JSON payloads, and headers).
+
 ## Features
 
 - **Web UI** (Flask) — tabbed MfgOrders / ProdPlan / OperBull browser with filters and JSON download
