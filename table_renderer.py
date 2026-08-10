@@ -8,6 +8,41 @@ from typing import Any
 
 
 class TableRenderer:
+    OPER_BULL_COLUMNS = [
+        "MONo",
+        "Feature",
+        "Operation",
+        "OperDesc",
+        "Seq",
+        "Split",
+        "VAP",
+        "SVAP",
+        "SAM",
+        "TargetOutput",
+        "Cost",
+        "Active",
+        "AddedOpn",
+        "Difficulty",
+        "Remarks",
+        "StyleNo",
+        "SAM2",
+        "ERP_StyleNo",
+        "MfgLoc",
+        "SpsMachinesCd",
+        "Escalation",
+        "WBT",
+        "Deleted",
+        "Approved",
+        "ApprovedBy",
+        "ApprovedDt",
+        "CreatedBy",
+        "CreatedDt",
+        "UpdatedBy",
+        "UpdatedDt",
+        "SyncFr",
+        "SyncBy",
+        "SyncDt",
+    ]
     @staticmethod
     def flatten_body(body: Any) -> list[dict[str, Any]]:
         if not isinstance(body, list) or not body:
@@ -31,7 +66,7 @@ class TableRenderer:
         return bool(TableRenderer.flatten_body(body))
 
     @staticmethod
-    def columns(rows: list[dict[str, Any]]) -> list[str]:
+    def columns(rows: list[dict[str, Any]], priority: list[str] | None = None) -> list[str]:
         if not rows:
             return []
 
@@ -43,16 +78,27 @@ class TableRenderer:
                 if key not in seen:
                     columns.append(key)
                     seen.add(key)
+
+        if priority:
+            columns = TableRenderer._prioritize_columns(columns, priority)
         return columns
 
     @staticmethod
-    def render_html(body: Any, limit: int = 500) -> dict[str, Any]:
+    def _prioritize_columns(columns: list[str], priority: list[str]) -> list[str]:
+        front = [col for col in priority if col in columns]
+        rest = [col for col in columns if col not in front]
+        return front + rest
+
+    @staticmethod
+    def render_html(
+        body: Any, limit: int = 500, priority_columns: list[str] | None = None
+    ) -> dict[str, Any]:
         rows = TableRenderer.flatten_body(body)
         total = len(rows)
         truncated = total > limit
         shown = limit if truncated else total
         slice_rows = rows[:limit] if truncated else rows
-        columns = TableRenderer.columns(slice_rows)
+        columns = TableRenderer.columns(slice_rows, priority_columns)
 
         if not columns:
             return {"html": "", "total": 0, "shown": 0, "truncated": False}
@@ -79,7 +125,9 @@ class TableRenderer:
         }
 
     @staticmethod
-    def render_text(body: Any, limit: int = 200) -> str:
+    def render_text(
+        body: Any, limit: int = 200, priority_columns: list[str] | None = None
+    ) -> str:
         rows = TableRenderer.flatten_body(body)
         if not rows:
             return ""
@@ -87,7 +135,7 @@ class TableRenderer:
         total = len(rows)
         truncated = total > limit
         slice_rows = rows[:limit] if truncated else rows
-        columns = TableRenderer.columns(slice_rows)
+        columns = TableRenderer.columns(slice_rows, priority_columns)
         widths = {col: min(24, max(len(col), 4)) for col in columns}
 
         for row in slice_rows:

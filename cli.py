@@ -5,6 +5,8 @@ Command-line usage:
   python cli.py MfgOrders --IONo=7807630
   python cli.py MfgOrders --MONo=7807630001 --IONo=7807630
   python cli.py OperBull --MONo=7808117004
+  python cli.py OperBull --MONo=7808117004 --OperDesc=FINISHING
+  python cli.py OperBull --MONo=7808117004 --refresh
   python cli.py MfgOrders --refresh
   python cli.py MfgOrders --out=orders.json
 """
@@ -44,6 +46,12 @@ def parse_args() -> argparse.Namespace:
     )
     parser.add_argument("--IONo", dest="io_no", default=None, help="Filter by IONo (partial match)")
     parser.add_argument("--MONo", dest="mo_no", default=None, help="Filter by MONo (partial match)")
+    parser.add_argument(
+        "--OperDesc",
+        dest="oper_desc",
+        default=None,
+        help="Filter by OperDesc (partial match, OperBull)",
+    )
     parser.add_argument("--refresh", action="store_true", help="Bypass cache and call the API")
     parser.add_argument("--out", dest="out_file", default=None, help="Save JSON response to file")
 
@@ -57,7 +65,9 @@ def main() -> int:
     config = args.config
     cmd = args.command
 
-    filters = ResponseFilter.from_request({"IONo": args.io_no, "MONo": args.mo_no})
+    filters = ResponseFilter.from_request(
+        {"IONo": args.io_no, "MONo": args.mo_no, "OperDesc": args.oper_desc}
+    )
     has_filters = ResponseFilter.has_filters_for_command(cmd, filters["IONo"], filters["MONo"])
     api_params = ResponseFilter.api_params_for_command(cmd, filters["IONo"], filters["MONo"])
 
@@ -98,14 +108,16 @@ def main() -> int:
     else:
         result = client.call(cmd, api_params, args.refresh)
 
-    if has_filters and ResponseFilter.uses_client_filter(cmd):
-        result = ResponseFilter.apply_to_result(result, cmd, filters["IONo"], filters["MONo"])
+    if has_filters and ResponseFilter.should_apply_client_filter(cmd, filters):
+        result = ResponseFilter.apply_to_result(
+            result, cmd, filters["IONo"], filters["MONo"], filters["OperDesc"]
+        )
 
     secs = round(time.perf_counter() - start, 2)
     status_suffix = ""
     if result.get("from_cache") and not has_filters:
         status_suffix = " (cached)"
-    elif has_filters and ResponseFilter.uses_client_filter(cmd):
+    elif ResponseFilter.should_apply_client_filter(cmd, filters):
         status_suffix = " (filtered)"
 
     print(f"HTTP {result['http_code']} in {secs}s{status_suffix}")
@@ -131,7 +143,8 @@ def main() -> int:
     if size > 10_000 or result.get("body") is None:
         print(f"Response too large to print ({size:,} bytes). Use --out=file.json")
     elif TableRenderer.can_render(result["body"]):
-        print(TableRenderer.render_text(result["body"]))
+        priority = TableRenderer.OPER_BULL_COLUMNS if cmd == "OperBull" else None
+        print(TableRenderer.render_text(result["body"], priority_columns=priority))
     else:
         output = result["raw"] if result["raw"] else json.dumps(result["body"], indent=2, ensure_ascii=False)
         print(output)

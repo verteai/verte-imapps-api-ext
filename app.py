@@ -111,7 +111,7 @@ HTML_TEMPLATE = """<!DOCTYPE html>
                 {% endif %}
             </form>
         {% elif cmd == 'OperBull' %}
-            <p class="filter-hint">Operations bulletin for a manufacturing order (exact MONo).</p>
+            <p class="filter-hint">Operations bulletin for a manufacturing order. MONo is sent to the API; OperDesc filters results (partial match).</p>
             <form class="filter-form" method="get" action="">
                 <input type="hidden" name="cmd" value="OperBull">
                 <input type="hidden" name="fetch" value="1">
@@ -119,18 +119,24 @@ HTML_TEMPLATE = """<!DOCTYPE html>
                     MONo
                     <input type="text" name="MONo" value="{{ filters.MONo or '' }}" placeholder="e.g. 7808117004" required>
                 </label>
+                <label>
+                    OperDesc
+                    <input type="text" name="OperDesc" value="{{ filters.OperDesc or '' }}" placeholder="e.g. FINISHING">
+                </label>
                 <button type="submit" class="btn">Search</button>
                 {% if has_filters %}
+                    <a class="btn btn-secondary" href="?cmd=OperBull&amp;fetch=1&amp;refresh=1{{ filter_query }}">Refresh from API</a>
                     <a class="btn btn-secondary" href="?cmd=OperBull&amp;clear=1">Clear</a>
                 {% endif %}
             </form>
         {% endif %}
     </div>
 
-    {% if has_filters %}
-        <p class="meta">{% if cmd == 'OperBull' %}API query{% else %}Filtering client-side (partial match){% endif %}
+    {% if has_filters or (cmd == 'OperBull' and filters.OperDesc) %}
+        <p class="meta">{% if cmd == 'OperBull' %}API query{% if filters.OperDesc %} + client filter{% endif %}{% else %}Filtering client-side (partial match){% endif %}
             {% if cmd == 'MfgOrders' and filters.IONo %} · IONo contains <code>{{ filters.IONo }}</code>{% endif %}
             {% if filters.MONo %} · MONo {% if cmd == 'OperBull' %}<code>{{ filters.MONo }}</code>{% else %}contains <code>{{ filters.MONo }}</code>{% endif %}{% endif %}
+            {% if cmd == 'OperBull' and filters.OperDesc %} · OperDesc contains <code>{{ filters.OperDesc }}</code>{% endif %}
         </p>
     {% endif %}
 
@@ -154,6 +160,23 @@ HTML_TEMPLATE = """<!DOCTYPE html>
                 </p>
             {% endif %}
         </div>
+    {% elif result is none and cmd == 'OperBull' and has_filters %}
+        <div class="notice">
+            <p>Operations bulletin for MONo <code>{{ filters.MONo }}</code>{% if filters.OperDesc %} · OperDesc contains <code>{{ filters.OperDesc }}</code>{% endif %}.</p>
+            {% if cache_valid %}
+                <p class="cache-hit">Cached copy available ({{ cache_age_min }} min old).</p>
+                <p class="actions">
+                    <a class="btn" href="?cmd=OperBull&amp;fetch=1{{ filter_query }}">Load from cache (instant)</a>
+                    <a class="btn btn-secondary" href="?cmd=OperBull&amp;fetch=1&amp;refresh=1{{ filter_query }}">Refresh from API</a>
+                    <a href="?cmd=OperBull&amp;fetch=1&amp;download=1{{ filter_query }}">Download cached JSON</a>
+                </p>
+            {% else %}
+                <p>No cache yet for this MONo.</p>
+                <p class="actions">
+                    <a class="btn" href="?cmd=OperBull&amp;fetch=1{{ filter_query }}">Fetch from API</a>
+                </p>
+            {% endif %}
+        </div>
     {% elif result is not none %}
         <p class="meta">
             HTTP status: <strong>{{ result.http_code }}</strong>
@@ -174,6 +197,8 @@ HTML_TEMPLATE = """<!DOCTYPE html>
             <a href="?cmd={{ cmd }}&amp;fetch=1&amp;download=1{{ filter_query }}">Download JSON</a>
             {% if cmd == 'MfgOrders' and not has_filters %}
                 <a href="?cmd=MfgOrders&amp;fetch=1&amp;refresh=1">Refresh from API</a>
+            {% elif cmd == 'OperBull' and has_filters %}
+                <a href="?cmd=OperBull&amp;fetch=1&amp;refresh=1{{ filter_query }}">Refresh from API</a>
             {% endif %}
         </p>
 
@@ -185,7 +210,7 @@ HTML_TEMPLATE = """<!DOCTYPE html>
             <p class="meta">Showing first {{ "{:,}".format(table_meta.shown) }} of {{ "{:,}".format(table_meta.total) }} rows. Use Download JSON for the full dataset.</p>
         {% endif %}
 
-        {% if has_filters and result.ok and result.record_count == 0 %}
+        {% if (has_filters or (cmd == 'OperBull' and filters.OperDesc)) and result.ok and result.record_count == 0 %}
             <p class="notice">No records matched your filter. Try a shorter value or refresh the cache.</p>
         {% endif %}
 
@@ -230,6 +255,8 @@ def _build_tab_href(command: str) -> str:
         elif command == "OperBull" and saved.get("MONo"):
             params["fetch"] = "1"
             params["MONo"] = saved["MONo"]
+            if saved.get("OperDesc"):
+                params["OperDesc"] = saved["OperDesc"]
     elif command not in ("MfgOrders", "OperBull"):
         params["fetch"] = "1"
 
@@ -245,8 +272,11 @@ def _filter_query(filters: dict, cmd: str) -> str:
             params["MONo"] = filters["MONo"]
     elif cmd == "ProdPlan" and filters.get("MONo"):
         params["MONo"] = filters["MONo"]
-    elif cmd == "OperBull" and filters.get("MONo"):
-        params["MONo"] = filters["MONo"]
+    elif cmd == "OperBull":
+        if filters.get("MONo"):
+            params["MONo"] = filters["MONo"]
+        if filters.get("OperDesc"):
+            params["OperDesc"] = filters["OperDesc"]
 
     if not params:
         return ""
@@ -306,12 +336,18 @@ def index() -> Response | str:
             result = client.get_cached_summary(cmd, api_params)
         if result is None:
             result = client.call(cmd, api_params, force_refresh)
-        if has_filters and ResponseFilter.uses_client_filter(cmd):
-            result = ResponseFilter.apply_to_result(result, cmd, filters["IONo"], filters["MONo"])
+        if ResponseFilter.should_apply_client_filter(cmd, filters):
+            result = ResponseFilter.apply_to_result(
+                result, cmd, filters["IONo"], filters["MONo"], filters["OperDesc"]
+            )
 
         if result is not None:
             tab_view = session.get("tab_view") or {}
-            tab_view[cmd] = {"IONo": filters["IONo"], "MONo": filters["MONo"]}
+            tab_view[cmd] = {
+                "IONo": filters["IONo"],
+                "MONo": filters["MONo"],
+                "OperDesc": filters["OperDesc"],
+            }
             session["tab_view"] = tab_view
     else:
         cache_valid = client.is_cache_valid(cmd, api_params)
@@ -352,7 +388,10 @@ def index() -> Response | str:
                 "Use Download JSON, or filter by IONo / MONo above for a smaller result."
             )
         elif TableRenderer.can_render(result.get("body")):
-            table_meta = TableRenderer.render_html(result["body"], preview_row_limit)
+            priority = TableRenderer.OPER_BULL_COLUMNS if cmd == "OperBull" else None
+            table_meta = TableRenderer.render_html(
+                result["body"], preview_row_limit, priority_columns=priority
+            )
             display_table = table_meta["html"]
         else:
             body = result.get("body")
